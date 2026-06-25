@@ -33,9 +33,10 @@ from rag_core import (
     build_rag_chain,
     query_rag,
     format_sources,
-    load_reranker,
-    RERANK_TOP_K,
 )
+
+# 本地常量（避免循环导入问题）
+RERANK_TOP_K = 3
 from pdf_loader import (
     load_pdf_from_bytes,
     load_text_file,
@@ -62,7 +63,8 @@ def get_llm(_api_key: str, _temperature: float):
 @st.cache_resource
 def get_reranker():
     """缓存 Reranker 模型，只加载一次"""
-    return load_reranker()
+    from rag_core import load_reranker as _load_reranker
+    return _load_reranker()
 
 
 @st.cache_resource
