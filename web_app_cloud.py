@@ -29,7 +29,7 @@ st.set_page_config(
 
 # ====== 核心模块（复用本地版的 pdf_loader 和检索逻辑）======
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
@@ -48,7 +48,7 @@ TOP_K = 3
 MERGE_TOP_K = 10
 RRF_K = 60
 
-# HuggingFace 免费推理 API 的嵌入模型
+# 嵌入模型（云端自动下载，约 80MB，首次启动需等 1-2 分钟）
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # LLM 参数
@@ -89,11 +89,11 @@ def rrf_fusion(results_a: list, results_b: list, k: int = 60, top_n: int = 3) ->
 # ====== 缓存资源（Streamlit Cloud 使用 @st.cache_resource）======
 @st.cache_resource
 def get_embeddings():
-    """缓存嵌入模型（HuggingFace 免费推理 API，无需本地模型）"""
-    print("  ✓ 使用 HuggingFace 推理 API 做嵌入（无需本地模型）")
-    return HuggingFaceEndpointEmbeddings(
-        model=EMBEDDING_MODEL,
-        huggingfacehub_api_token=os.getenv("HF_TOKEN", None),  # 可选
+    """缓存嵌入模型（首次启动自动下载 ~80MB，之后秒加载）"""
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},
     )
 
 
@@ -325,8 +325,6 @@ def main():
                 st.rerun()
             except Exception as e:
                 st.error(f"初始化失败: {e}")
-                if "401" in str(e) or "Unauthorized" in str(e):
-                    st.info("💡 可能是 HuggingFace API 需要 Token。在 Streamlit Cloud 中添加 HF_TOKEN Secret。")
                 return
 
     # ---- 聊天记录 ----
