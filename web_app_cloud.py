@@ -48,8 +48,8 @@ TOP_K = 3
 MERGE_TOP_K = 10
 RRF_K = 60
 
-# 嵌入模型（云端自动下载，约 80MB，首次启动需等 1-2 分钟）
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# 嵌入模型（中英文都支持，约 120MB，首次启动自动下载）
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # LLM 参数
 LLM_MODEL = "deepseek-chat"
