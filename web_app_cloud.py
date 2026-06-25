@@ -250,7 +250,12 @@ def main():
         st.header("⚙️ 设置")
 
         # 从 Streamlit Cloud Secrets 或 .env 读取 API Key
-        default_key = st.secrets.get("DEEPSEEK_API_KEY", "") or os.getenv("DEEPSEEK_API_KEY", "")
+        try:
+            default_key = st.secrets.get("DEEPSEEK_API_KEY", "")
+        except Exception:
+            default_key = ""
+        if not default_key:
+            default_key = os.getenv("DEEPSEEK_API_KEY", "")
         api_key = st.text_input(
             "DeepSeek API Key",
             value=default_key,
