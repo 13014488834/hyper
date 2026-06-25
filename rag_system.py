@@ -29,6 +29,8 @@ from rag_core import (
     query_rag,
     format_sources,
     print_step,
+    load_reranker,
+    RERANK_TOP_K,
 )
 
 # 文件加载
@@ -113,6 +115,8 @@ def main():
     parser.add_argument("--pdf", nargs="+", help="要加载的 PDF 文件路径")
     parser.add_argument("--txt", nargs="+", help="要额外加载的 TXT 文件路径")
     parser.add_argument("--rebuild", action="store_true", help="强制重建向量库")
+    parser.add_argument("--no-hybrid", action="store_true", help="禁用混合检索（仅用语义检索）")
+    parser.add_argument("--no-reranker", action="store_true", help="禁用 Reranker 精排")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -175,7 +179,26 @@ def main():
     llm = init_llm(api_key)
 
     print_step(6, "构建 RAG 问答链")
-    rag_chain, retriever = build_rag_chain(vectorstore, llm)
+
+    # 混合检索 / Reranker 配置
+    use_hybrid = not args.no_hybrid
+    use_reranker = not args.no_reranker
+    reranker = None
+
+    if use_reranker:
+        try:
+            reranker = load_reranker()
+        except Exception as e:
+            print(f"       ⚠ Reranker 加载失败，将跳过精排: {e}")
+            use_reranker = False
+
+    rag_chain, retriever = build_rag_chain(
+        vectorstore, llm,
+        documents=documents,        # BM25 需要原始文档
+        use_hybrid=use_hybrid,
+        use_reranker=use_reranker,
+        reranker=reranker,
+    )
 
     # 进入交互
     interactive_qa(rag_chain, retriever)

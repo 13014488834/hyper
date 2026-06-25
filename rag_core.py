@@ -102,6 +102,15 @@ CHUNK_OVERLAP = 50
 # 检索参数
 TOP_K = 3
 
+# 混合检索参数（BM25 + 语义）
+MERGE_TOP_K = 10     # 每路检索取多少候选用 RRF 融合
+RRF_K = 60           # RRF 平滑参数（越大排名差异越小）
+
+# Reranker 模型
+RERANKER_MODEL = "BAAI/bge-reranker-base"
+LOCAL_RERANKER_MODEL = str(BASE_DIR / "models" / "BAAI" / "bge-reranker-base")
+RERANK_TOP_K = 3     # 精排后保留的文档数
+
 # 嵌入模型 —— 三级 fallback
 LOCAL_EMBEDDING_MODEL = str(BASE_DIR / "models" / "iic" / "nlp_corom_sentence-embedding_chinese-base")
 PRIMARY_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -305,18 +314,181 @@ def init_llm(
         sys.exit(1)
 
 
+# ====== 混合检索 ======
+class HybridRetriever:
+    """
+    混合检索器：BM25 关键词 + 语义向量，RRF 融合排序。
+
+    原理：
+      - BM25 擅长精确关键词匹配（如人名、编号、术语）
+      - 语义检索擅长理解意图和同义表达
+      - RRF（Reciprocal Rank Fusion）将两路排名合并，不需要手动调权重
+    """
+
+    def __init__(self, documents: list, vectorstore: Chroma, merge_k: int = MERGE_TOP_K):
+        from langchain_community.retrievers import BM25Retriever
+
+        # 构建 BM25 索引（基于原始文档的 token 频率统计）
+        self.bm25 = BM25Retriever.from_documents(documents)
+        self.bm25.k = merge_k
+
+        # 语义检索器
+        self.vector_retriever = vectorstore.as_retriever(
+            search_kwargs={"k": merge_k}
+        )
+
+    def invoke(self, query: str) -> list:
+        """并行检索两路，RRF 融合后返回 top-k 文档"""
+        bm25_docs = self.bm25.invoke(query)
+        vector_docs = self.vector_retriever.invoke(query)
+        return rrf_fusion(bm25_docs, vector_docs, k=RRF_K)
+
+
+def rrf_fusion(
+    results_a: list, results_b: list, k: int = 60, top_n: int = None
+) -> list:
+    """
+    Reciprocal Rank Fusion —— 将两路检索结果重新排序。
+
+    算法：
+      score(doc) = Σ 1 / (k + rank_i(doc))
+      其中 rank_i 是文档在第 i 路检索结果中的排名（从 1 开始），
+      k 是平滑参数（默认 60），避免排名靠前的文档主导结果。
+
+    用文档内容做去重 key，两路都出现的文档得分会叠加。
+    """
+    if top_n is None:
+        top_n = TOP_K
+
+    scores: dict = {}
+    doc_map: dict = {}  # content_hash -> Document
+
+    for rank, doc in enumerate(results_a, start=1):
+        key = doc.page_content[:200]  # 用前 200 字符做去重特征
+        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+        if key not in doc_map:
+            doc_map[key] = doc
+
+    for rank, doc in enumerate(results_b, start=1):
+        key = doc.page_content[:200]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+        if key not in doc_map:
+            doc_map[key] = doc
+
+    # 按 RRF 融合分降序排列
+    sorted_keys = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+
+    return [doc_map[key] for key in sorted_keys[:top_n]]
+
+
+# ====== Reranker 精排 ======
+def load_reranker(model_path: str = None) -> "Reranker":
+    """
+    加载 Cross-Encoder 精排模型。
+    优先本地 ModelScope 缓存，其次从 HuggingFace 镜像下载。
+    """
+    if model_path is None:
+        # 检查本地路径
+        if os.path.isdir(LOCAL_RERANKER_MODEL):
+            model_path = LOCAL_RERANKER_MODEL
+        else:
+            model_path = RERANKER_MODEL
+
+    print(f"       正在加载 Reranker 模型: {model_path} ...")
+    return Reranker(model_path)
+
+
+class Reranker:
+    """
+    Cross-Encoder 精排器。
+
+    与 Bi-Encoder（Embedding）不同，Cross-Encoder 将 query 和 document
+    拼接后送入 Transformer，做深度交叉注意力计算，因此排序精度远高于
+    向量相似度，但速度较慢，适合对少量候选做二次精排。
+
+    典型用法：粗排（BM25+语义）→ 取 Top-10 → Reranker 精排 → 取 Top-3
+    """
+
+    def __init__(self, model_name_or_path: str):
+        from sentence_transformers import CrossEncoder
+
+        self.model = CrossEncoder(model_name_or_path)
+
+    def rerank(self, query: str, docs: list, top_k: int = RERANK_TOP_K) -> list:
+        """对文档列表重新打分排序，返回 top_k 个"""
+        if len(docs) <= top_k:
+            return docs
+
+        # 构造 query-doc 对
+        pairs = [[query, doc.page_content] for doc in docs]
+        # Cross-Encoder 预测相关性分数
+        scores = self.model.predict(pairs)
+
+        # 分数归一化（可选，提升可读性）
+        ranked = sorted(
+            zip(docs, scores), key=lambda x: x[1], reverse=True
+        )
+        return [doc for doc, _ in ranked[:top_k]]
+
+
 # ====== RAG 链构建 ======
 def build_rag_chain(
     vectorstore: Chroma,
     llm: ChatDeepSeek,
+    documents: list = None,
     top_k: int = TOP_K,
     prompt_template: str = RAG_PROMPT_TEMPLATE,
+    use_hybrid: bool = True,
+    use_reranker: bool = True,
+    reranker: "Reranker" = None,
 ):
     """
     构建 RAG 链：检索 → 组装提示词 → LLM 生成。
-    返回 (rag_chain, retriever)
+    支持混合检索（BM25 + 语义）和 Reranker 精排。
+
+    参数:
+        vectorstore: Chroma 向量库
+        llm: 大模型实例
+        documents: 原始文档列表（混合检索需要 BM25 索引）
+        top_k: 最终返回给 LLM 的文档数
+        use_hybrid: 是否启用 BM25 + 语义混合检索
+        use_reranker: 是否启用 Cross-Encoder 精排
+        reranker: Reranker 实例（use_reranker=True 时必传）
+
+    返回:
+        (rag_chain, retriever) —— retriever 对外暴露，供 query_rag 取来源文档
     """
-    retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
+    # ---- 构建检索器 ----
+    if use_hybrid and documents:
+        # 混合检索：BM25 + 语义 → RRF 融合
+        print("       🔀 启用混合检索（BM25 + 语义向量，RRF 融合）")
+        hybrid = HybridRetriever(documents, vectorstore, merge_k=MERGE_TOP_K)
+        base_retriever = hybrid
+    else:
+        # 纯语义检索
+        base_retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
+
+    # ---- 叠加 Reranker ----
+    if use_reranker and reranker is not None:
+        print(f"       🎯 启用 Reranker 精排（Cross-Encoder，Top-{RERANK_TOP_K}）")
+
+        # 包装为 LangChain 兼容的 retriever
+        from langchain_core.retrievers import BaseRetriever
+        from langchain_core.documents import Document as LCDocument
+
+        class RerankerRetriever(BaseRetriever):
+            """将 Reranker 包装为 LangChain BaseRetriever"""
+            def _get_relevant_documents(self, query: str) -> list:
+                # 步骤 1: 粗排 —— 混合检索取 Top-10
+                docs = base_retriever.invoke(query)
+                # 步骤 2: 精排 —— Cross-Encoder 重打分
+                return reranker.rerank(query, docs, top_k=RERANK_TOP_K)
+
+        retriever = RerankerRetriever()
+    else:
+        retriever = base_retriever
+
+    # ---- 构建 LCEL 链 ----
     prompt = ChatPromptTemplate.from_template(prompt_template)
 
     def format_docs(docs) -> str:

@@ -33,6 +33,8 @@ from rag_core import (
     build_rag_chain,
     query_rag,
     format_sources,
+    load_reranker,
+    RERANK_TOP_K,
 )
 from pdf_loader import (
     load_pdf_from_bytes,
@@ -55,6 +57,12 @@ def get_embeddings():
 def get_llm(_api_key: str, _temperature: float):
     """缓存 LLM 实例，API Key 或 temperature 变化时重建"""
     return init_llm(api_key=_api_key, temperature=_temperature)
+
+
+@st.cache_resource
+def get_reranker():
+    """缓存 Reranker 模型，只加载一次"""
+    return load_reranker()
 
 
 @st.cache_resource
@@ -168,6 +176,32 @@ def render_sidebar():
 
         st.divider()
 
+        # ---- 高级检索设置 ----
+        st.header("🔀 高级检索")
+
+        hybrid_enabled = st.checkbox(
+            "启用混合检索（BM25 + 语义）",
+            value=True,
+            help="同时使用关键词匹配和语义相似度，RRF 融合排序。关闭后只用语义检索",
+        )
+
+        reranker_enabled = st.checkbox(
+            "启用 Reranker 精排",
+            value=True,
+            help="用 Cross-Encoder 对候选文档做二次精排，提升最相关文档的排名",
+        )
+
+        if reranker_enabled:
+            reranker_top_k = st.slider(
+                "Reranker Top-K",
+                min_value=1, max_value=5, value=3, step=1,
+                help="精排后最终保留的文档片段数",
+            )
+        else:
+            reranker_top_k = top_k
+
+        st.divider()
+
         # ---- 操作按钮 ----
         col1, col2 = st.columns(2)
         with col1:
@@ -203,7 +237,7 @@ def render_sidebar():
         st.caption(f"对话轮数: {len(st.session_state.messages) // 2}")
         st.caption(f"已加载文件: {len(st.session_state.loaded_sources)} 个")
 
-    return api_key, temperature, top_k, chunk_size
+    return api_key, temperature, top_k, chunk_size, hybrid_enabled, reranker_enabled, reranker_top_k
 
 
 # ====== 上传处理 ======
@@ -271,7 +305,7 @@ def main():
     init_session_state()
 
     # ---- 侧边栏 ----
-    api_key, temperature, top_k, chunk_size = render_sidebar()
+    api_key, temperature, top_k, chunk_size, hybrid_enabled, reranker_enabled, reranker_top_k = render_sidebar()
 
     # ---- 主区域 ----
     st.title("🤖 RAG 知识库问答系统")
@@ -298,7 +332,30 @@ def main():
                     return
 
                 llm = get_llm(_api_key=api_key, _temperature=temperature)
-                rag_chain, retriever = build_rag_chain(vectorstore, llm, top_k=top_k)
+
+                # 加载 Reranker（如果需要）
+                reranker = None
+                if reranker_enabled:
+                    try:
+                        reranker = get_reranker()
+                    except Exception as e:
+                        st.warning(f"Reranker 加载失败，将跳过精排: {e}")
+                        reranker_enabled_actual = False
+                    else:
+                        reranker_enabled_actual = True
+                else:
+                    reranker_enabled_actual = False
+
+                # 构建 RAG 链 —— 传入 documents 以支持混合检索
+                documents = split_documents(st.session_state.knowledge_text)
+                rag_chain, retriever = build_rag_chain(
+                    vectorstore, llm,
+                    documents=documents,
+                    top_k=top_k,
+                    use_hybrid=hybrid_enabled,
+                    use_reranker=reranker_enabled_actual,
+                    reranker=reranker,
+                )
 
                 st.session_state.rag_chain = rag_chain
                 st.session_state.retriever = retriever
