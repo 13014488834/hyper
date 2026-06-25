@@ -1,0 +1,27 @@
+# 环境变量（含 API Key）
+.env
+
+# 本地嵌入模型（391MB，通过 setup_models.py 下载）
+models/
+
+# 向量库持久化（本地自动生成）
+chroma_db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Claude
+.claude/
+
+# 系统文件
+Thumbs.db
+.DS_Store
