@@ -2,70 +2,76 @@
 
 基于 **LangChain + DeepSeek + Chroma + HuggingFace** 的本地知识库问答系统。
 
-## 功能
+**支持 PDF / TXT 知识库 + CLI 命令行 + Web 聊天界面。**
 
-- 读取 `knowledge.txt` 作为知识库，自动切分、向量化、持久化
-- 命令行交互问答，检索 Top-3 片段，显示答案和引用来源
-- 国内网络友好：嵌入模型通过 ModelScope 下载，不走 HuggingFace
-- 支持 DeepSeek API（从 `.env` 读取 key）
-
-## 快速开始
-
-### 1. 安装依赖
+## 快速开始（3 步）
 
 ```bash
+# 1. 安装依赖
 pip install -r requirements.txt
-```
 
-### 2. 配置 API Key
-
-编辑 `.env` 文件，填入你的 DeepSeek API Key：
-
-```
-DEEPSEEK_API_KEY=sk-你的密钥
-```
-
-（去 [platform.deepseek.com](https://platform.deepseek.com) 创建）
-
-### 3. 下载嵌入模型
-
-```bash
+# 2. 下载嵌入模型（约 390MB，只需一次）
 python setup_models.py
+
+# 3. 配置 DeepSeek API Key
+#    创建 .env 文件，写入：DEEPSEEK_API_KEY=sk-你的密钥
+#    去 https://platform.deepseek.com 免费获取
 ```
 
-模型会下载到 `./models/` 目录（约 390MB），只需执行一次。
+## 使用方式
 
-### 4. 准备知识库
-
-编辑 `knowledge.txt`，放入你的知识内容（支持中文）。
-
-### 5. 启动
+### Web 界面（推荐）
 
 ```bash
-python rag_system.py
+streamlit run web_app.py
+# 浏览器打开 http://localhost:8501
 ```
 
-启动后输入问题即可问答，输入 `quit` 退出。
+- 📁 上传 PDF / TXT 文件，自动向量化
+- 💬 聊天式问答，带引用来源
+- ⚙️ 可调 Temperature、Top-K、Chunk Size
+- 🔒 每个用户填自己的 API Key，不会泄露
+
+### CLI 命令行
+
+```bash
+python rag_system.py                              # 纯 knowledge.txt
+python rag_system.py --pdf contract.pdf            # 带 PDF
+python rag_system.py --pdf a.pdf b.pdf             # 多个 PDF
+python rag_system.py --txt extra.txt               # 额外 TXT
+python rag_system.py --rebuild                     # 强制重建向量库
+```
 
 ## 项目结构
 
 ```
-├── rag_system.py        # 主程序
-├── setup_models.py      # 模型下载脚本
-├── knowledge.txt        # 知识库文件
-├── .env                 # API Key 配置（不提交到 Git）
+├── rag_core.py          # 核心管道（嵌入、向量库、LLM、RAG 链）
+├── pdf_loader.py        # PDF/TXT 文件加载
+├── rag_system.py        # CLI 命令行入口
+├── web_app.py           # Streamlit Web 界面
+├── setup_models.py      # 嵌入模型下载脚本
+├── knowledge.txt        # 默认知识库（可替换）
 ├── requirements.txt     # Python 依赖
-├── models/              # 本地嵌入模型（不提交到 Git）
-└── chroma_db/           # 向量库持久化（不提交到 Git）
+├── .env                 # API Key（不上传 Git，需自行创建）
+├── models/              # 本地嵌入模型（不上传 Git，setup_models.py 生成）
+└── chroma_db/           # 向量库（不上传 Git，自动生成）
 ```
 
-## 配置参数
+## 依赖项
 
-在 `rag_system.py` 顶部可修改：
+| 组件 | 用途 |
+|------|------|
+| LangChain | RAG 管道编排 |
+| DeepSeek API | 大模型生成答案 |
+| Chroma | 向量数据库 |
+| HuggingFace / ModelScope | 嵌入模型下载与推理 |
+| Streamlit | Web 界面 |
+| pypdf | PDF 文本提取 |
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `CHUNK_SIZE` | 500 | 文档切分大小 |
-| `CHUNK_OVERLAP` | 50 | 片段重叠长度 |
-| `TOP_K` | 3 | 检索返回数量 |
-| `LLM_TEMPERATURE` | 0.1 | 生成随机性 |
+## 常见问题
+
+**Q: 嵌入模型下载失败？**
+A: `setup_models.py` 默认使用 ModelScope（国内快）。海外用户可设环境变量 `HF_ENDPOINT=""` 走 HuggingFace 官方。
+
+**Q: Web 模式给别人用，我的 API Key 会泄露吗？**
+A: 不会。Web 界面默认不读取 `.env`，每个用户需自己填写 Key，Key 只存在浏览器会话中，关闭即消失。`.env` 文件在 `.gitignore` 中，不会上传到 GitHub。

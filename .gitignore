@@ -22,6 +22,9 @@ venv/
 # Claude
 .claude/
 
+# 上传缓存
+uploads/
+
 # 系统文件
 Thumbs.db
 .DS_Store
