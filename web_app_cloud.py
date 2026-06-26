@@ -254,7 +254,7 @@ def main():
         st.caption("已加载:")
         if KNOWLEDGE_PATH.exists():
             if KNOWLEDGE_PATH.exists():
-                with open(KNOWLEDGE_PATH) as f:
+                with open(KNOWLEDGE_PATH, encoding="utf-8") as f:
                     if f.read().strip():
                         st.caption("  📄 knowledge.txt")
         for name in st.session_state.loaded_sources:
