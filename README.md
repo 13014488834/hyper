@@ -1,76 +1,107 @@
-# RAG 问答系统
+# 🤖 RAG Knowledge Base Q&A / RAG 知识库问答系统
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Cloud-red.svg)](https://streamlit.io/)
+
+A RAG (Retrieval-Augmented Generation) Q&A system powered by **LangChain + DeepSeek + Chroma**, featuring **hybrid search (BM25 + semantic) + Cross-Encoder Reranker**.
 
 基于 **LangChain + DeepSeek + Chroma** 的知识库问答系统，支持 **混合检索（BM25 + 语义）+ Reranker 精排**。
 
-**PDF / TXT 知识库 · CLI 命令行 · Web 聊天界面 · Streamlit Cloud 公网部署。**
+**PDF / TXT Knowledge Base · CLI · Web Chat · Streamlit Cloud Deployment · 公网部署**
 
-## 使用方式
+> 🌐 **English** | [中文](#中文)
 
-### 🌐 在线版（无需安装）
+---
 
-👉 **https://aucodhdcwzwwjmucdqhxqz.streamlit.app/**
+## 🌍 Live Demo
 
-浏览器打开即用，上传 PDF/TXT 知识文件，填 DeepSeek API Key，直接问答。
+👉 **[https://aucodhdcwzwwjmucdqhxqz.streamlit.app/](https://aucodhdcwzwwjmucdqhxqz.streamlit.app/)**
 
-### 💻 本地版（完整功能：混合检索 + Reranker）
+Open in browser, upload PDF/TXT, enter your DeepSeek API Key, start asking questions. No installation needed.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| 🔀 **Hybrid Search** | BM25 (keyword) + Semantic (embedding) with RRF fusion |
+| 🎯 **Reranker** | Cross-Encoder re-ranks top results for precision |
+| 📁 **File Upload** | PDF + TXT, auto-chunked and vectorized |
+| 💬 **Web Chat** | Streamlit web interface with chat history |
+| ⌨️ **CLI Mode** | Command-line interface for scripting |
+| 🌐 **Cloud Deploy** | Free hosting on Streamlit Cloud |
+
+## 🚀 Quick Start
+
+### Online (no install)
+
+Open the [live demo](https://aucodhdcwzwwjmucdqhxqz.streamlit.app/), paste your DeepSeek key, upload a PDF, ask questions.
+
+### Local (full features: Hybrid + Reranker)
 
 ```bash
-# 1. 装依赖
+# 1. Install
 pip install -r requirements.txt
 
-# 2. 下载模型（~1.4GB，只需一次）
+# 2. Download models (~1.4GB, once)
 python setup_models.py
 
-# 3. 配置 Key
-#    创建 .env，写入: DEEPSEEK_API_KEY=sk-你的密钥
+# 3. Setup API key
+#    Create .env: DEEPSEEK_API_KEY=sk-your-key
 
-# 4. 启动 Web
+# 4. Launch
 streamlit run web_app.py
 # → http://localhost:8501
 ```
 
-- 📁 上传 PDF/TXT，自动向量化
-- 🔀 混合检索（BM25 + 语义，RRF 融合）
-- 🎯 Cross-Encoder Reranker 精排
-- 🔒 API Key 不存储、不泄露
-
-### ⌨️ CLI 命令行
+### CLI
 
 ```bash
-python rag_system.py                              # 纯 knowledge.txt
-python rag_system.py --pdf contract.pdf            # 带 PDF
-python rag_system.py --rebuild                     # 强制重建向量库
-python rag_system.py --no-hybrid --no-reranker     # 关闭混合检索/Reranker
+python rag_system.py                              # default knowledge.txt
+python rag_system.py --pdf contract.pdf            # with PDF
+python rag_system.py --rebuild                     # force rebuild index
+python rag_system.py --no-hybrid --no-reranker     # turn off extras
 ```
 
-## 项目结构
+## 🏗️ Architecture
+
+| Component | Role |
+|-----------|------|
+| LangChain | RAG pipeline orchestration |
+| DeepSeek API | LLM answer generation |
+| Chroma | Vector database (semantic) |
+| BM25 | Keyword retrieval |
+| RRF | Reciprocal Rank Fusion |
+| Cross-Encoder | Reranker (re-rank top-K) |
+| Streamlit | Web UI |
+| pypdf | PDF text extraction |
+
+## 📁 Project Structure
 
 ```
-├── rag_core.py          # 核心管道（嵌入、向量库、LLM、混合检索、Reranker）
-├── pdf_loader.py        # PDF/TXT 文件加载
-├── rag_system.py        # CLI 命令行入口
-├── web_app.py           # 本地 Web 界面（完整功能）
-├── web_app_cloud.py     # 云端 Web 界面（Streamlit Cloud）
-├── setup_models.py      # 模型下载脚本（嵌入 + Reranker）
-├── knowledge.txt        # 默认知识库
-├── requirements.txt     # 依赖
-├── .env                 # API Key（不上传 Git）
+├── rag_core.py          # Core pipeline (embedding, vector store, LLM, hybrid, reranker)
+├── pdf_loader.py        # PDF/TXT file loader
+├── rag_system.py        # CLI entry point
+├── web_app.py           # Local web UI (full features)
+├── web_app_cloud.py     # Cloud web UI (Streamlit Cloud)
+├── setup_models.py      # Model download script (embedding + reranker)
+├── knowledge.txt        # Default knowledge base
+└── requirements.txt     # Dependencies
 ```
 
-## 技术栈
+---
 
-| 组件 | 用途 |
-|------|------|
-| LangChain | RAG 管道编排 |
-| DeepSeek API | 大模型生成答案 |
-| Chroma | 向量数据库（语义检索） |
-| BM25 | 关键词检索（混合检索） |
-| RRF | Reciprocal Rank Fusion（双路融合） |
-| Cross-Encoder | Reranker 精排 |
-| Streamlit | Web 界面 |
-| pypdf | PDF 文本提取 |
+<a name="中文"></a>
 
-## 常见问题
+## 📖 中文说明
+
+### 使用方式
+
+同上 Quick Start，详见上方。
+
+### 常见问题
 
 **Q: DeepSeek API 返回 401 或鉴权失败？**
 A: 三种可能：
@@ -79,7 +110,7 @@ A: 三种可能：
 3. `.env` 文件里有多余空格或引号
 
 **Q: 嵌入模型下载失败？**
-A: `setup_models.py` 默认走 ModelScope（国内快）。如果失败，手动切换 HuggingFace 镜像后重试：
+A: `setup_models.py` 默认走 ModelScope（国内快）。如果失败，手动切换 HuggingFace 镜像：
 ```bash
 # Windows: set HF_ENDPOINT=https://hf-mirror.com
 # Mac/Linux: export HF_ENDPOINT=https://hf-mirror.com
@@ -87,7 +118,6 @@ python setup_models.py
 ```
 
 **Q: 云端版和本地版有什么区别？**
-A:
 
 | | 本地版 | 云端版 |
 |---|---|---|
@@ -95,3 +125,7 @@ A:
 | 混合检索 | ✅ BM25 + 语义 | ✅ BM25 + 语义 |
 | Reranker | ✅ 本地 1GB 模型 | ❌ 未启用 |
 | 启动方式 | `streamlit run web_app.py` | 公网链接直接打开 |
+
+## 📄 License
+
+MIT — 自由使用、修改、分发。
