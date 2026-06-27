@@ -20,8 +20,8 @@ import os as _os
 _os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 _os.environ["CURL_CA_BUNDLE"] = ""
 _os.environ["REQUESTS_CA_BUNDLE"] = ""
-if not _os.environ.get("HF_ENDPOINT"):
-    _os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# Cloud 部署运行在美国服务器，必须使用 HuggingFace 官方端点
+_os.environ["HF_ENDPOINT"] = "https://huggingface.co"
 
 import ssl as _ssl
 try:
@@ -41,9 +41,6 @@ import os
 import hashlib
 from datetime import datetime
 from pathlib import Path
-
-# Cloud 部署运行在美国服务器，必须使用 HuggingFace 官方端点，不能用国内镜像
-os.environ["HF_ENDPOINT"] = "https://huggingface.co"
 
 import streamlit as st
 
