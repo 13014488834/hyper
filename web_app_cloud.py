@@ -72,8 +72,8 @@ TOP_K = 5
 MERGE_TOP_K = 10
 RRF_K = 60
 
-# 嵌入模型 —— BGE 中文优化模型（~100MB），检索精度远超多语言通用模型
-EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
+# 嵌入模型（中英文都支持，约 120MB，首次启动自动下载）
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # LLM 参数
 LLM_MODEL = "deepseek-chat"
@@ -138,10 +138,10 @@ def get_embeddings():
             encode_kwargs={"normalize_embeddings": True},
         )
     except Exception:
-        # Fallback: BGE 下载失败 → 尝试多语言模型（同样支持中文）
+        # Fallback: 如果主模型下载失败，尝试轻量备用模型
         _configure_hf_client_ssl()
         return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
@@ -234,6 +234,26 @@ def init_session_state():
             st.session_state[key] = value
 
 
+# ====== 启动时自动加载 knowledge.txt ======
+def auto_load_knowledge_txt() -> bool:
+    """应用启动时自动加载 knowledge.txt，无需用户手动上传。
+    返回 True 表示加载了新内容，需要重建向量库。"""
+    if KNOWLEDGE_PATH.exists():
+        try:
+            dt = load_text_file(KNOWLEDGE_PATH)
+            if dt.strip():
+                current = st.session_state.get("knowledge_text", "")
+                if dt not in current:  # 避免重复加载
+                    if current:
+                        st.session_state.knowledge_text = merge_knowledge_sources(dt, current)
+                    else:
+                        st.session_state.knowledge_text = dt
+                    return True
+        except Exception:
+            pass
+    return False
+
+
 # ====== 上传处理 ======
 def handle_uploads(uploaded_files) -> None:
     new_texts = []
@@ -304,10 +324,15 @@ def main():
         if KNOWLEDGE_PATH.exists():
             if KNOWLEDGE_PATH.exists():
                 with open(KNOWLEDGE_PATH, encoding="utf-8") as f:
-                    if f.read().strip():
-                        st.caption("  📄 knowledge.txt")
+                    content = f.read().strip()
+                    if content:
+                        st.caption(f"  📄 knowledge.txt ({len(content)} 字符)")
         for name in st.session_state.loaded_sources:
             st.caption(f"  📄 {name}")
+        if st.session_state.knowledge_text:
+            st.caption(f"  内存知识库: {len(st.session_state.knowledge_text)} 字符")
+        else:
+            st.caption("  ⚠️ 内存知识库为空")
 
         st.divider()
         st.header("⚙️ 设置")
@@ -343,8 +368,12 @@ def main():
         st.header("📊 状态")
         if st.session_state.system_ready:
             st.success("向量库: 就绪")
+            if "doc_count" in st.session_state:
+                st.caption(f"文档片段: {st.session_state.doc_count} 个")
         else:
             st.info("向量库: 等待初始化")
+            if st.session_state.knowledge_text:
+                st.caption(f"知识已加载 ({len(st.session_state.knowledge_text)} 字符)，等待初始化...")
         st.caption(f"对话轮数: {len(st.session_state.messages) // 2}")
 
         # ---- 导出对话 ----
@@ -413,6 +442,7 @@ def main():
 
                 st.session_state.rag_chain = rag_chain
                 st.session_state.retriever = retriever
+                st.session_state.doc_count = vectorstore._collection.count() if vectorstore else 0
                 st.session_state.system_ready = True
                 st.rerun()
             except Exception as e:
